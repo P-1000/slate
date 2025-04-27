@@ -5,6 +5,9 @@ import clipboard from 'electron-clipboard-extended';
 import Datastore from 'nedb';
 import { getLinkPreview } from 'link-preview-js';
 
+// Disable hardware acceleration before app is ready
+app.disableHardwareAcceleration();
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const db = new Datastore({ filename: path.join(__dirname, 'clipboardData.db'), autoload: true });
 
@@ -21,7 +24,10 @@ interface ClipboardItem {
   metadata?: any; 
 }
 
-clipboard.startWatching();
+// Start clipboard watching after app is ready
+app.whenReady().then(() => {
+  clipboard.startWatching();
+});
 
 // Create the main window
 function createWindow() {
@@ -157,9 +163,12 @@ function isValidURL(content: string): boolean {
   }
 }
 
+// Watch clipboard for text changes with improved error handling
 clipboard.on('text-changed', async () => {
-  const content = clipboard.readText();
-  if (content) {
+  try {
+    const content = clipboard.readText();
+    if (!content || content.trim() === '') return;
+
     const id = Math.random().toString(36).substr(2, 9);
     const timestamp = Date.now();
 
@@ -169,76 +178,140 @@ clipboard.on('text-changed', async () => {
     // Check if the content is a URL and extract metadata if it's a link
     if (isValidURL(content)) {
       type = 'link';
-      console.log(type)
+      try {
+        metadata = await getLinkPreview(content);
+      } catch (err) {
+        console.error('Error getting link preview:', err);
+      }
     }
 
     const newItem: ClipboardItem = { id, type, content, timestamp, metadata };
 
     // Save to database if it's not a duplicate
     db.findOne({ content }, (err, existingItem) => {
-      if (err) return console.error('Error checking existing items:', err);
+      if (err) {
+        console.error('Error checking existing items:', err);
+        return;
+      }
       if (!existingItem) {
         saveClipboardItem(newItem);
       }
     });
+  } catch (error) {
+    console.error('Error handling text clipboard change:', error);
   }
 });
 
-clipboard.on('')
+// Watch clipboard for images with improved error handling
+clipboard.on('image-changed', async (imageData: any) => {
+  try {
+    if (!imageData || imageData.isEmpty()) return;
 
-// Watch clipboard for images
-clipboard.on('image-changed', (imageData: any) => {
-  console.log('Image data:', imageData);
-  const id = Math.random().toString(36).substr(2, 9);
-  const timestamp = Date.now();
-  const content = imageData.toDataURL(); // Store image as base64 string
+    const id = Math.random().toString(36).substr(2, 9);
+    const timestamp = Date.now();
+    const content = imageData.toDataURL();
 
-  const newItem: ClipboardItem = { id, type: 'image', content, timestamp };
+    const newItem: ClipboardItem = { id, type: 'image', content, timestamp };
 
-  // Save to database if it's not a duplicate
-  db.findOne({ content }, (err, existingItem) => {
-    if (err) return console.error('Error checking existing image items:', err);
-    if (!existingItem) {
-      saveClipboardItem(newItem);
-    }
-  });
+    // Save to database if it's not a duplicate
+    db.findOne({ content }, (err, existingItem) => {
+      if (err) {
+        console.error('Error checking existing image items:', err);
+        return;
+      }
+      if (!existingItem) {
+        saveClipboardItem(newItem);
+      }
+    });
+  } catch (error) {
+    console.error('Error handling image clipboard change:', error);
+  }
 });
 
-// IPC Handlers
+// IPC Handlers with improved error handling
 ipcMain.handle('get-clipboard-data', async () => {
-  return await getClipboardData();
+  try {
+    return await getClipboardData();
+  } catch (error) {
+    console.error('Error getting clipboard data:', error);
+    throw error;
+  }
 });
 
-ipcMain.handle('delete-clipboard-item', async (event, id: string) => {
+ipcMain.handle('delete-clipboard-data', async (event, id: string) => {
   return new Promise((resolve, reject) => {
+    if (!id) {
+      reject(new Error('Invalid ID provided'));
+      return;
+    }
+    
     db.remove({ id }, { multi: false }, (err, numRemoved) => {
       if (err) {
         console.error('Error deleting clipboard item:', err);
-        return reject(false);
+        reject(err);
+        return;
       }
       resolve(numRemoved > 0);
     });
   });
 });
 
-ipcMain.handle('get-link-preview', async (event, url: string) => {
-  try {
-    const metadata = await fetchLinkMetadata(url);
-    return metadata;
-  } catch (error) {
-    console.error('Error fetching link preview:', error);
-    return null;
-  }
+ipcMain.handle('pin-clipboard-data', async (event, id: string) => {
+  return new Promise((resolve, reject) => {
+    if (!id) {
+      reject(new Error('Invalid ID provided'));
+      return;
+    }
+
+    db.update(
+      { id },
+      { $set: { pinned: true } },
+      { returnUpdatedDocs: true },
+      (err: Error | null, _numAffected: number, affectedDocuments: any) => {
+        if (err) {
+          console.error('Error pinning clipboard item:', err);
+          reject(err);
+          return;
+        }
+        resolve(affectedDocuments);
+      }
+    );
+  });
 });
 
-ipcMain.handle('copy-to-clipboard', async (event: any, data: string) => {
+ipcMain.handle('unpin-clipboard-data', async (event, id: string) => {
+  return new Promise((resolve, reject) => {
+    if (!id) {
+      reject(new Error('Invalid ID provided'));
+      return;
+    }
+
+    db.update(
+      { id },
+      { $set: { pinned: false } },
+      { returnUpdatedDocs: true },
+      (err: Error | null, _numAffected: number, affectedDocuments: any) => {
+        if (err) {
+          console.error('Error unpinning clipboard item:', err);
+          reject(err);
+          return;
+        }
+        resolve(affectedDocuments);
+      }
+    );
+  });
+});
+
+ipcMain.handle('copy-to-clipboard', async (event, content: string) => {
   try {
-    clipboard.writeText(data);
-    const activeWindow = BrowserWindow.getFocusedWindow();
+    if (!content) throw new Error('No content provided');
+    
+    clipboard.writeText(content);
+    const activeWindow = BrowserWindow.fromWebContents(event.sender);
     if (activeWindow) {
       activeWindow.blur();
     }
-    win?.hide()
+    win?.hide();
     return { success: true };
   } catch (error: any) {
     console.error('Error during copy-and-paste:', error);
@@ -246,34 +319,40 @@ ipcMain.handle('copy-to-clipboard', async (event: any, data: string) => {
   }
 });
 
-ipcMain.handle('pin-clipboard-item', async (event, id: string) => {
+ipcMain.handle('get-pinned-clipboard-data', async () => {
   return new Promise((resolve, reject) => {
-    if (!id) return reject(new Error('Invalid ID'));
-
-    db.findOne({ id }, (err: any, item: any) => {
-      if (err) return reject(new Error('Error finding clipboard item'));
-      if (!item) return reject(new Error('Clipboard item not found'));
-
-      const updatedPinnedState = !item.pinned;
-      db.update({ id }, { $set: { pinned: updatedPinnedState } }, { multi: false }, (err) => {
-        if (err) return reject(new Error('Error updating pinned state'));
-        resolve({ ...item, pinned: updatedPinnedState });
-      });
+    db.find({ pinned: true }).sort({ timestamp: -1 }).exec((err: Error | null, docs: any[]) => {
+      if (err) {
+        console.error('Error getting pinned clipboard data:', err);
+        reject(err);
+        return;
+      }
+      resolve(docs);
     });
   });
+});
+
+ipcMain.handle('set-window-opacity', async (event, opacity: number) => {
+  try {
+    if (typeof opacity !== 'number' || opacity < 0 || opacity > 1) {
+      throw new Error('Invalid opacity value');
+    }
+
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (window) {
+      window.setOpacity(opacity);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Error setting window opacity:', error);
+    throw error;
+  }
 });
 
 // App Event Listeners
 app.whenReady().then(async () => {
   try {
-    // Simpler approach to disable hardware acceleration if needed
-    if (process.platform === 'darwin') {
-      // Disable hardware acceleration on macOS to prevent GPU crashes
-      // This is a more reliable approach than checking GPU info
-      app.disableHardwareAcceleration();
-      console.log('Hardware acceleration disabled on macOS');
-    }
-    
     createWindow();
     createTray();
     registerHotkey();
@@ -305,9 +384,6 @@ app.on('activate', () => {
   }
 });
 
-// Add this to your existing imports
-// ...
-
 // Add this handler in the appropriate place after creating the window
 // Add this handler for the hide-window event
 ipcMain.on('hide-window', () => {
@@ -323,19 +399,4 @@ ipcMain.handle('update-window-transparency', (_event, opacity) => {
     return true;
   }
   return false;
-});
-
-// Add this with your other IPC handlers
-ipcMain.handle('set-window-opacity', async (event, opacity: number) => {
-  try {
-    const window = BrowserWindow.fromWebContents(event.sender);
-    if (window) {
-      window.setOpacity(opacity);
-      return true;
-    }
-    return false;
-  } catch (error) {
-    console.error('Error setting window opacity:', error);
-    return false;
-  }
 });

@@ -1,4 +1,4 @@
-import require$$0, { ipcMain, BrowserWindow, app, globalShortcut, nativeImage, Tray, Menu } from "electron";
+import require$$0, { app, ipcMain, BrowserWindow, globalShortcut, nativeImage, Tray, Menu } from "electron";
 import { fileURLToPath } from "node:url";
 import path$3 from "node:path";
 import require$$0$1 from "crypto";
@@ -4411,11 +4411,14 @@ var datastore = Datastore$2;
 var Datastore = datastore;
 var nedb = Datastore;
 const Datastore$1 = /* @__PURE__ */ getDefaultExportFromCjs(nedb);
+app.disableHardwareAcceleration();
 const __dirname = path$3.dirname(fileURLToPath(import.meta.url));
 const db = new Datastore$1({ filename: path$3.join(__dirname, "clipboardData.db"), autoload: true });
 let win = null;
 let tray = null;
-clipboard$1.startWatching();
+app.whenReady().then(() => {
+  clipboard$1.startWatching();
+});
 function createWindow() {
   win = new BrowserWindow({
     icon: path$3.join(__dirname, "icon.png"),
@@ -4542,7 +4545,6 @@ clipboard$1.on("text-changed", async () => {
     });
   }
 });
-clipboard$1.on("");
 clipboard$1.on("image-changed", (imageData) => {
   console.log("Image data:", imageData);
   const id = Math.random().toString(36).substr(2, 9);
@@ -4609,10 +4611,6 @@ ipcMain.handle("pin-clipboard-item", async (event, id) => {
 });
 app.whenReady().then(async () => {
   try {
-    if (process.platform === "darwin") {
-      app.disableHardwareAcceleration();
-      console.log("Hardware acceleration disabled on macOS");
-    }
     createWindow();
     createTray();
     registerHotkey();

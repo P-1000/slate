@@ -49,7 +49,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       initial={{ opacity: 0, y: 5 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -5 }}
-      transition={{ duration: 0.2 }}
+      transition={{ duration: 0.15 }}
       className={cn(
         "p-3 rounded-lg cursor-pointer mb-2",
         "transition-colors duration-200",
@@ -61,88 +61,80 @@ export const Sidebar: React.FC<SidebarProps> = ({
         "border"
       )}
       onClick={() => setSelectedItem(item)}
+      layout="position"
     >
-      <div className="flex items-center justify-between mb-1">
-        <div className="flex items-center gap-2">
-          <div className="text-primary-500">
-            {getTypeIcon(item.type)}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="text-primary-500 flex-shrink-0">
+              {getTypeIcon(item.type)}
+            </div>
+            <span className="text-xs opacity-70 flex-shrink-0">
+              {formatDate(item.timestamp)}
+            </span>
           </div>
-          <span className="text-xs opacity-70">
-            {formatDate(item.timestamp)}
-          </span>
+          {item.pinned && (
+            <Pin className="h-3 w-3 text-primary-500 flex-shrink-0" />
+          )}
         </div>
-        {item.pinned && (
-          <Pin className="h-3 w-3 text-primary-500" />
-        )}
-      </div>
-      <div className="line-clamp-2 text-sm">
-        {item.type === 'image' 
-          ? 'Image' 
-          : item.content}
+        <div className="line-clamp-2 text-sm break-all">
+          {item.type === 'image' ? 'Image' : item.content}
+        </div>
       </div>
     </motion.div>
   );
 
   return (
-    <div className={cn(
-      "w-96 h-full overflow-hidden flex flex-col",
-      "border-r",
-      isDark ? "border-dark-800" : "border-gray-200"
-    )}>
-      <div className={cn(
-        "flex-1 overflow-y-auto p-4 pt-24", // Increased top padding to fix overlap
-        "scrollbar-thin scrollbar-thumb-rounded",
-        isDark 
-          ? "scrollbar-thumb-dark-700 scrollbar-track-dark-900" 
-          : "scrollbar-thumb-gray-300 scrollbar-track-gray-100"
-      )}>
-        {isLoading ? (
-          <div className="h-full flex items-center justify-center">
-            <LoadingSpinner className="text-primary-500" />
-          </div>
-        ) : error ? (
-          <EmptyState
-            message={error}
-            icon={<RefreshCw className="h-12 w-12 opacity-20 text-primary-500" />}
-            actionLabel="Try Again"
-            onAction={fetchClipboardData}
-            isDark={isDark}
-          />
-        ) : !hasItems ? (
-          <EmptyState
-            message="No clipboard items found"
-            actionLabel="Refresh"
-            onAction={fetchClipboardData}
-            isDark={isDark}
-          />
-        ) : (
-          <AnimatePresence>
-            {filteredPinnedItems.length > 0 && (
-              <div className="mb-6">
-                <h3 className={cn(
-                  "text-xs uppercase font-semibold mb-2 px-2 flex items-center",
-                  isDark ? "text-primary-400" : "text-primary-600"
-                )}>
-                  <Pin className="h-3 w-3 mr-1" />
-                  Pinned
-                </h3>
-                {filteredPinnedItems.map(renderClipboardItem)}
-              </div>
-            )}
-            
-            {filteredUnpinnedItems.length > 0 && (
-              <div>
-                <h3 className={cn(
-                  "text-xs uppercase font-semibold mb-2 px-2",
-                  isDark ? "text-gray-400" : "text-gray-500"
-                )}>
-                  Recent
-                </h3>
-                {filteredUnpinnedItems.map(renderClipboardItem)}
-              </div>
-            )}
-          </AnimatePresence>
-        )}
+    <div className="h-full flex flex-col overflow-hidden">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rounded">
+        <div className="p-4">
+          {error && (
+            <div className="mb-4 p-3 rounded-lg bg-red-500/10 text-red-500 text-sm">
+              {error}
+            </div>
+          )}
+
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <LoadingSpinner />
+            </div>
+          ) : !hasItems ? (
+            <EmptyState
+              message="No clipboard items yet"
+              actionLabel="Refresh"
+              onAction={fetchClipboardData}
+              isDark={isDark}
+            />
+          ) : (
+            <AnimatePresence mode="popLayout">
+              {filteredPinnedItems.length > 0 && (
+                <div className="mb-6">
+                  <h3 className={cn(
+                    "text-xs uppercase font-semibold mb-3 px-2 sticky top-0 z-10 py-2",
+                    isDark ? "text-gray-400 bg-dark-900/80" : "text-gray-500 bg-white/80",
+                    "backdrop-blur-sm"
+                  )}>
+                    Pinned
+                  </h3>
+                  {filteredPinnedItems.map(renderClipboardItem)}
+                </div>
+              )}
+              
+              {filteredUnpinnedItems.length > 0 && (
+                <div>
+                  <h3 className={cn(
+                    "text-xs uppercase font-semibold mb-3 px-2 sticky top-0 z-10 py-2",
+                    isDark ? "text-gray-400 bg-dark-900/80" : "text-gray-500 bg-white/80",
+                    "backdrop-blur-sm"
+                  )}>
+                    Recent
+                  </h3>
+                  {filteredUnpinnedItems.map(renderClipboardItem)}
+                </div>
+              )}
+            </AnimatePresence>
+          )}
+        </div>
       </div>
     </div>
   );
