@@ -8,11 +8,16 @@ import { getLinkPreview } from 'link-preview-js';
 // Disable hardware acceleration before app is ready
 app.disableHardwareAcceleration();
 
+// Performance optimizations
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const db = new Datastore({ filename: path.join(__dirname, 'clipboardData.db'), autoload: true });
 
 let win: BrowserWindow | null = null;
 let tray: Tray | null = null;
+let isQuitting = false;
 
 // Interface for Clipboard Items
 interface ClipboardItem {
@@ -24,105 +29,121 @@ interface ClipboardItem {
   metadata?: any; 
 }
 
-// Start clipboard watching after app is ready
-app.whenReady().then(() => {
-  clipboard.startWatching();
-});
-
-// Create the main window
 function createWindow() {
   win = new BrowserWindow({
-    icon: path.join(__dirname, 'icon.png'),
-    frame: false,
+    width: 680,
+    height: 450,
     show: false,
-    resizable: false,
-    movable: true,
-    modal: true,
-    transparent: true,
-    alwaysOnTop: true,
-    vibrancy: 'under-window', // Add vibrancy effect for macOS
-    visualEffectState: 'active', // Keep the effect active
-    backgroundColor: '#00000000', // Transparent background
+    frame: false,
+    resizable: true,
+    maximizable: false,
+    minimizable: false,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.mjs'),
+      nodeIntegration: true,
       contextIsolation: true,
-      nodeIntegration: false,
+      preload: path.join(__dirname, 'preload.js'),
+      backgroundThrottling: false,
     },
   });
 
+  // Load the app
   if (process.env.VITE_DEV_SERVER_URL) {
     win.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
-    win.loadFile(path.join(__dirname, 'index.html'));
+    const distPath = process.env.DIST || path.join(__dirname, '../dist');
+    win.loadFile(path.join(distPath, 'index.html'));
   }
 
-  win.webContents.on('did-finish-load', () => {
-    win?.webContents.send('main-process-message', new Date().toLocaleString());
+  // Show window when ready
+  win.once('ready-to-show', () => {
+    win?.show();
+    win?.focus();
   });
-  
-  // Prevent the window from closing when it loses focus
+
+  // Handle window blur
   win.on('blur', () => {
-    // Don't hide the window on blur if it was just shown via shortcut
-    // This will be handled by the shortcut handler
-    console.log('Window blurred, but not hiding automatically');
+    if (!isQuitting) {
+      win?.hide();
+    }
   });
+
+  // Handle window close
+  win.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      win?.hide();
+    }
+  });
+
+  // Create tray icon
+  const icon = nativeImage.createFromPath(path.join(__dirname, 'icon.png'));
+  tray = new Tray(icon);
+  
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Show App',
+      click: () => {
+        showWindow();
+      }
+    },
+    {
+      label: 'Quit',
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      }
+    }
+  ]);
+
+  tray.setContextMenu(contextMenu);
+  tray.setToolTip('Slate Clipboard Manager');
+  
+  tray.on('click', () => {
+    showWindow();
+  });
+}
+
+function showWindow() {
+  if (!win) return;
+  
+  // Get the mouse position
+  const { screen } = require('electron');
+  const mousePos = screen.getCursorScreenPoint();
+  const display = screen.getDisplayNearestPoint(mousePos);
+  
+  // Calculate window position
+  const windowBounds = win.getBounds();
+  const x = Math.round(mousePos.x - (windowBounds.width / 2));
+  const y = Math.round(mousePos.y - 10);
+  
+  // Ensure window is within screen bounds
+  const adjustedX = Math.max(
+    display.bounds.x,
+    Math.min(x, display.bounds.x + display.bounds.width - windowBounds.width)
+  );
+  const adjustedY = Math.max(
+    display.bounds.y,
+    Math.min(y, display.bounds.y + display.bounds.height - windowBounds.height)
+  );
+  
+  win.setPosition(adjustedX, adjustedY);
+  win.show();
+  win.focus();
 }
 
 // Register global hotkey
 function registerHotkey() {
-  globalShortcut.register('Cmd+Shift+Space', () => {
-    if (!win) return;
-
-    // Toggle visibility
-    if (win.isVisible()) {
+  const success = globalShortcut.register('CommandOrControl+Shift+V', () => {
+    if (win?.isVisible()) {
       win.hide();
     } else {
-
-      // Set a flag to prevent immediate hiding
-      let justShown = true;
-      
-      win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-      win.show();
-      win.focus();
-
-      // Reset the workspace setting
-      setTimeout(() => {
-        win.setVisibleOnAllWorkspaces(false);
-        
-        // Clear the flag after a short delay
-        setTimeout(() => {
-          justShown = false;
-        }, 500);
-      }, 100);
-      
-      // Prevent the window from being hidden immediately after showing
-      win.once('blur', () => {
-        if (justShown) {
-          // If the window just got shown, don't hide it on blur
-          console.log('Preventing auto-hide after shortcut activation');
-          return;
-        }
-      });
+      showWindow();
     }
   });
-}
 
-// Create system tray
-function createTray() {
-  const icon = nativeImage.createFromPath(path.join(__dirname, 'tray-icon.png'));
-  tray = new Tray(icon);
-  tray.setToolTip('Clipboard Manager');
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: 'Open Clipboard Manager',
-      click: () => win?.show(),
-    },
-    {
-      label: 'Quit',
-      click: () => app.quit(),
-    },
-  ]);
-  tray.setContextMenu(contextMenu);
+  if (!success) {
+    console.error('Failed to register hotkey');
+  }
 }
 
 // Save clipboard item to the database
@@ -332,44 +353,11 @@ ipcMain.handle('get-pinned-clipboard-data', async () => {
   });
 });
 
-ipcMain.handle('set-window-opacity', async (event, opacity: number) => {
-  try {
-    if (typeof opacity !== 'number' || opacity < 0 || opacity > 1) {
-      throw new Error('Invalid opacity value');
-    }
-
-    const window = BrowserWindow.fromWebContents(event.sender);
-    if (window) {
-      window.setOpacity(opacity);
-      return true;
-    }
-    return false;
-  } catch (error) {
-    console.error('Error setting window opacity:', error);
-    throw error;
-  }
-});
-
-// App Event Listeners
-app.whenReady().then(async () => {
-  try {
-    createWindow();
-    createTray();
-    registerHotkey();
-    
-    // Periodically check if the window is responsive
-    setInterval(() => {
-      if (win && !win.webContents.isDestroyed()) {
-        win.webContents.executeJavaScript('console.log("Window health check")')
-          .catch(err => {
-            console.error('Window appears to be unresponsive:', err);
-            createWindow(); // Recreate window if unresponsive
-          });
-      }
-    }, 30000); // Check every 30 seconds
-  } catch (error) {
-    console.error('Error during app initialization:', error);
-  }
+// App lifecycle handlers
+app.on('ready', () => {
+  createWindow();
+  registerHotkey();
+  clipboard.startWatching();
 });
 
 app.on('window-all-closed', () => {
@@ -379,24 +367,11 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
+  if (win === null) {
     createWindow();
   }
 });
 
-// Add this handler in the appropriate place after creating the window
-// Add this handler for the hide-window event
-ipcMain.on('hide-window', () => {
-  if (win && win.isVisible()) {
-    win.hide();
-  }
-});
-
-// Add this handler for updating window transparency
-ipcMain.handle('update-window-transparency', (_event, opacity) => {
-  if (win) {
-    win.setOpacity(opacity);
-    return true;
-  }
-  return false;
+app.on('before-quit', () => {
+  isQuitting = true;
 });

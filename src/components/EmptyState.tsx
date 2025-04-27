@@ -1,49 +1,56 @@
 import * as React from "react";
 import { Clipboard, RefreshCw } from "lucide-react";
 import { cn } from "../utils/cn";
+import { Button } from "./ui/Button";
 
 interface EmptyStateProps {
   message: string;
-  icon?: React.ReactNode;
   actionLabel?: string;
   onAction?: () => void;
-  isDark?: boolean;
+  isDark: boolean;
 }
 
 export const EmptyState: React.FC<EmptyStateProps> = ({
   message,
-  icon = <Clipboard className="h-12 w-12 opacity-20" />,
   actionLabel,
   onAction,
-  isDark = false,
+  isDark,
 }) => {
   return (
-    <div className="flex flex-col items-center justify-center h-full p-6 text-center">
+    <div className="flex flex-col items-center justify-center py-12 px-4">
       <div className={cn(
-        "mb-4",
-        isDark ? "text-gray-400" : "text-gray-500"
+        "w-12 h-12 rounded-full flex items-center justify-center mb-4",
+        isDark ? "bg-dark-800" : "bg-gray-100"
       )}>
-        {icon}
+        {onAction ? (
+          <RefreshCw className={cn(
+            "h-6 w-6",
+            isDark ? "text-gray-400" : "text-gray-500"
+          )} />
+        ) : (
+          <Clipboard className={cn(
+            "h-6 w-6",
+            isDark ? "text-gray-400" : "text-gray-500"
+          )} />
+        )}
       </div>
       <p className={cn(
-        "mb-4 text-lg",
-        isDark ? "text-gray-300" : "text-gray-600"
+        "text-sm text-center mb-4",
+        isDark ? "text-gray-400" : "text-gray-500"
       )}>
         {message}
       </p>
       {actionLabel && onAction && (
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={onAction}
           className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-lg",
-            "transition-colors duration-200",
-            "bg-primary-500/10 hover:bg-primary-500/20",
-            "text-primary-600 dark:text-primary-400"
+            isDark ? "text-primary-400" : "text-primary-500"
           )}
         >
-          <RefreshCw className="h-4 w-4" />
           {actionLabel}
-        </button>
+        </Button>
       )}
     </div>
   );
