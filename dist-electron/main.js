@@ -4426,8 +4426,16 @@ function createWindow() {
     modal: true,
     transparent: true,
     alwaysOnTop: true,
+    vibrancy: "under-window",
+    // Add vibrancy effect for macOS
+    visualEffectState: "active",
+    // Keep the effect active
+    backgroundColor: "#00000000",
+    // Transparent background
     webPreferences: {
-      preload: path$3.join(__dirname, "preload.mjs")
+      preload: path$3.join(__dirname, "preload.mjs"),
+      contextIsolation: true,
+      nodeIntegration: false
     }
   });
   if (process.env.VITE_DEV_SERVER_URL) {
@@ -4438,6 +4446,9 @@ function createWindow() {
   win.webContents.on("did-finish-load", () => {
     win == null ? void 0 : win.webContents.send("main-process-message", (/* @__PURE__ */ new Date()).toLocaleString());
   });
+  win.on("blur", () => {
+    console.log("Window blurred, but not hiding automatically");
+  });
 }
 function registerHotkey() {
   globalShortcut.register("Cmd+Shift+Space", () => {
@@ -4445,12 +4456,22 @@ function registerHotkey() {
     if (win.isVisible()) {
       win.hide();
     } else {
+      let justShown = true;
       win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
       win.show();
       win.focus();
       setTimeout(() => {
         win.setVisibleOnAllWorkspaces(false);
+        setTimeout(() => {
+          justShown = false;
+        }, 500);
       }, 100);
+      win.once("blur", () => {
+        if (justShown) {
+          console.log("Preventing auto-hide after shortcut activation");
+          return;
+        }
+      });
     }
   });
 }
@@ -4586,10 +4607,26 @@ ipcMain.handle("pin-clipboard-item", async (event, id) => {
     });
   });
 });
-app.on("ready", () => {
-  createWindow();
-  createTray();
-  registerHotkey();
+app.whenReady().then(async () => {
+  try {
+    if (process.platform === "darwin") {
+      app.disableHardwareAcceleration();
+      console.log("Hardware acceleration disabled on macOS");
+    }
+    createWindow();
+    createTray();
+    registerHotkey();
+    setInterval(() => {
+      if (win && !win.webContents.isDestroyed()) {
+        win.webContents.executeJavaScript('console.log("Window health check")').catch((err) => {
+          console.error("Window appears to be unresponsive:", err);
+          createWindow();
+        });
+      }
+    }, 3e4);
+  } catch (error) {
+    console.error("Error during app initialization:", error);
+  }
 });
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
@@ -4599,5 +4636,30 @@ app.on("window-all-closed", () => {
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
+  }
+});
+ipcMain.on("hide-window", () => {
+  if (win && win.isVisible()) {
+    win.hide();
+  }
+});
+ipcMain.handle("update-window-transparency", (_event, opacity) => {
+  if (win) {
+    win.setOpacity(opacity);
+    return true;
+  }
+  return false;
+});
+ipcMain.handle("set-window-opacity", async (event, opacity) => {
+  try {
+    const window2 = BrowserWindow.fromWebContents(event.sender);
+    if (window2) {
+      window2.setOpacity(opacity);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error("Error setting window opacity:", error);
+    return false;
   }
 });

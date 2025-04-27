@@ -34,8 +34,13 @@ function createWindow() {
     modal: true,
     transparent: true,
     alwaysOnTop: true,
+    vibrancy: 'under-window', // Add vibrancy effect for macOS
+    visualEffectState: 'active', // Keep the effect active
+    backgroundColor: '#00000000', // Transparent background
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
     },
   });
 
@@ -48,6 +53,13 @@ function createWindow() {
   win.webContents.on('did-finish-load', () => {
     win?.webContents.send('main-process-message', new Date().toLocaleString());
   });
+  
+  // Prevent the window from closing when it loses focus
+  win.on('blur', () => {
+    // Don't hide the window on blur if it was just shown via shortcut
+    // This will be handled by the shortcut handler
+    console.log('Window blurred, but not hiding automatically');
+  });
 }
 
 // Register global hotkey
@@ -59,13 +71,32 @@ function registerHotkey() {
     if (win.isVisible()) {
       win.hide();
     } else {
+
+      // Set a flag to prevent immediate hiding
+      let justShown = true;
+      
       win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
       win.show();
       win.focus();
 
+      // Reset the workspace setting
       setTimeout(() => {
         win.setVisibleOnAllWorkspaces(false);
+        
+        // Clear the flag after a short delay
+        setTimeout(() => {
+          justShown = false;
+        }, 500);
       }, 100);
+      
+      // Prevent the window from being hidden immediately after showing
+      win.once('blur', () => {
+        if (justShown) {
+          // If the window just got shown, don't hide it on blur
+          console.log('Preventing auto-hide after shortcut activation');
+          return;
+        }
+      });
     }
   });
 }
@@ -233,10 +264,33 @@ ipcMain.handle('pin-clipboard-item', async (event, id: string) => {
 });
 
 // App Event Listeners
-app.on('ready', () => {
-  createWindow();
-  createTray();
-  registerHotkey();
+app.whenReady().then(async () => {
+  try {
+    // Simpler approach to disable hardware acceleration if needed
+    if (process.platform === 'darwin') {
+      // Disable hardware acceleration on macOS to prevent GPU crashes
+      // This is a more reliable approach than checking GPU info
+      app.disableHardwareAcceleration();
+      console.log('Hardware acceleration disabled on macOS');
+    }
+    
+    createWindow();
+    createTray();
+    registerHotkey();
+    
+    // Periodically check if the window is responsive
+    setInterval(() => {
+      if (win && !win.webContents.isDestroyed()) {
+        win.webContents.executeJavaScript('console.log("Window health check")')
+          .catch(err => {
+            console.error('Window appears to be unresponsive:', err);
+            createWindow(); // Recreate window if unresponsive
+          });
+      }
+    }, 30000); // Check every 30 seconds
+  } catch (error) {
+    console.error('Error during app initialization:', error);
+  }
 });
 
 app.on('window-all-closed', () => {
@@ -248,5 +302,40 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
+  }
+});
+
+// Add this to your existing imports
+// ...
+
+// Add this handler in the appropriate place after creating the window
+// Add this handler for the hide-window event
+ipcMain.on('hide-window', () => {
+  if (win && win.isVisible()) {
+    win.hide();
+  }
+});
+
+// Add this handler for updating window transparency
+ipcMain.handle('update-window-transparency', (_event, opacity) => {
+  if (win) {
+    win.setOpacity(opacity);
+    return true;
+  }
+  return false;
+});
+
+// Add this with your other IPC handlers
+ipcMain.handle('set-window-opacity', async (event, opacity: number) => {
+  try {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (window) {
+      window.setOpacity(opacity);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Error setting window opacity:', error);
+    return false;
   }
 });

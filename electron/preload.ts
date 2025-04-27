@@ -1,25 +1,29 @@
-import { ipcRenderer, contextBridge } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
 
+// Expose protected methods that allow the renderer process to use
+// the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('ipcRenderer', {
-  on(...args: Parameters<typeof ipcRenderer.on>) {
-    const [channel, listener] = args;
-    return ipcRenderer.on(channel, (event, ...args) => listener(event, ...args));
+  // IPC communication
+  send: (channel: string, ...args: any[]) => {
+    ipcRenderer.send(channel, ...args)
   },
-  off(...args: Parameters<typeof ipcRenderer.off>) {
-    const [channel, ...omit] = args;
-    return ipcRenderer.off(channel, ...omit);
+  on: (channel: string, callback: Function) => {
+    const newCallback = (_: any, ...args: any[]) => callback(...args)
+    ipcRenderer.on(channel, newCallback)
+    return () => ipcRenderer.removeListener(channel, newCallback)
   },
-  send(...args: Parameters<typeof ipcRenderer.send>) {
-    const [channel, ...omit] = args;
-    return ipcRenderer.send(channel, ...omit);
+  off: (channel: string, callback: Function) => {
+    ipcRenderer.removeListener(channel, callback as any)
   },
-  invoke(...args: Parameters<typeof ipcRenderer.invoke>) {
-    const [channel, ...omit] = args;
-    return ipcRenderer.invoke(channel, ...omit);
-  },
+  // Clipboard methods
   getClipboardData: () => ipcRenderer.invoke('get-clipboard-data'),
-  deleteClipboardData: (id: string) => ipcRenderer.invoke('delete-clipboard-item', id),
-  pinClipboardData: (id: string) => ipcRenderer.invoke('pin-clipboard-item', id),
-  fetchLinkPreview: (url :any) => ipcRenderer.invoke('get-link-preview', url),
-  copyToClipboard: (data :any) => ipcRenderer.invoke('copy-to-clipboard', data),
-});
+  deleteClipboardData: (id: string) => ipcRenderer.invoke('delete-clipboard-data', id),
+  pinClipboardData: (id: string) => ipcRenderer.invoke('pin-clipboard-data', id),
+  unpinClipboardData: (id: string) => ipcRenderer.invoke('unpin-clipboard-data', id),
+  copyToClipboard: (content: string) => ipcRenderer.invoke('copy-to-clipboard', content),
+  getPinnedClipboardData: () => ipcRenderer.invoke('get-pinned-clipboard-data'),
+  setWindowOpacity: (opacity: number) => ipcRenderer.invoke('set-window-opacity', opacity),
+})
+
+// Let the main process know the preload script has loaded
+ipcRenderer.send('preload-loaded')
