@@ -3965,7 +3965,7 @@ function Datastore$2(options) {
 }
 util.inherits(Datastore$2, require$$9.EventEmitter);
 Datastore$2.prototype.loadDatabase = function() {
-  this.executor.push({ this: this.persistence, fn: this.persistence.loadDatabase, arguments }, true);
+  this.executor.push({ this: this.persistence, fn: this.persistence.loadDatabase, arguments: [] }, true);
 };
 Datastore$2.prototype.getAllData = function() {
   return this.indexes._id.getAll();
@@ -4609,6 +4609,65 @@ ipcMain.handle("pin-clipboard-item", async (event, id) => {
     });
   });
 });
+
+ipcMain.handle("pin-clipboard-data", async (event, id) => {
+  return new Promise((resolve, reject) => {
+    if (!id) return reject(new Error("Invalid ID"));
+    
+    db.update(
+      { id },
+      { $set: { pinned: true } },
+      { returnUpdatedDocs: true },
+      (err, numAffected, affectedDocuments) => {
+        if (err) {
+          console.error("Error pinning clipboard item:", err);
+          return reject(err);
+        }
+        if (numAffected === 0) {
+          return reject(new Error("Item not found"));
+        }
+        resolve(affectedDocuments);
+      }
+    );
+  });
+});
+
+ipcMain.handle("unpin-clipboard-data", async (event, id) => {
+  return new Promise((resolve, reject) => {
+    if (!id) return reject(new Error("Invalid ID"));
+    
+    db.update(
+      { id },
+      { $set: { pinned: false } },
+      { returnUpdatedDocs: true },
+      (err, numAffected, affectedDocuments) => {
+        if (err) {
+          console.error("Error unpinning clipboard item:", err);
+          return reject(err);
+        }
+        if (numAffected === 0) {
+          return reject(new Error("Item not found"));
+        }
+        resolve(affectedDocuments);
+      }
+    );
+  });
+});
+
+ipcMain.handle("delete-clipboard-data", async (event, id) => {
+  return new Promise((resolve, reject) => {
+    if (!id) return reject(new Error("Invalid ID"));
+    
+    db.remove({ id }, { multi: false }, (err, numRemoved) => {
+      if (err) {
+        console.error("Error deleting clipboard item:", err);
+        return reject(err);
+      }
+      resolve(numRemoved > 0);
+    });
+  });
+});
+
 app.whenReady().then(async () => {
   try {
     createWindow();

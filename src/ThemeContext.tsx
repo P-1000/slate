@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
-type Theme = 'light' | 'dark' | 'system';
-type ColorPalette = 
+export type Theme = 'light' | 'dark' | 'system';
+export type ColorPalette = 
   | 'default' 
   | 'blue' 
   | 'purple' 
@@ -18,7 +18,7 @@ type ColorPalette =
   | 'fuchsia' 
   | 'lime';
 
-type FontFamily = 
+export type FontFamily = 
   | 'system' 
   | 'inter' 
   | 'roboto' 

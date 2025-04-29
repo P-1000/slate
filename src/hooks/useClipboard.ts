@@ -108,9 +108,9 @@ export function useClipboard() {
     }
     
     try {
-      const success = await window.ipcRenderer.deleteClipboardData(id);
+      const success = await window.ipcRenderer.invoke('delete-clipboard-data', id);
       if (success) {
-        setClipboardData((prevData) => prevData.filter((item) => item.id !== id));
+        setClipboardData(prevData => prevData.filter(item => item.id !== id));
         if (selectedItem?.id === id) {
           setSelectedItem(null);
         }
@@ -119,8 +119,8 @@ export function useClipboard() {
       }
     } catch (error) {
       console.error("Error deleting clipboard item:", error);
-      setError("Failed to delete item. Please try again.");
-      throw error; // Re-throw for error boundary
+      setError(`Failed to delete item: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw error;
     }
   };
 
@@ -132,27 +132,31 @@ export function useClipboard() {
     
     try {
       const item = clipboardData.find(item => item.id === id);
-      if (!item) return;
+      if (!item) {
+        throw new Error(`Item with ID ${id} not found`);
+      }
       
       const updatedItem = item.pinned 
-        ? await window.ipcRenderer.unpinClipboardData(id)
-        : await window.ipcRenderer.pinClipboardData(id);
+        ? await window.ipcRenderer.invoke('unpin-clipboard-data', id)
+        : await window.ipcRenderer.invoke('pin-clipboard-data', id);
         
-      if (updatedItem) {
-        setClipboardData((prevData) =>
-          prevData.map((item) => (item.id === id ? updatedItem : item))
-        );
-        
-        if (selectedItem?.id === id) {
-          setSelectedItem(updatedItem);
-        }
-      } else {
+      if (!updatedItem) {
         throw new Error(`Failed to ${item.pinned ? 'unpin' : 'pin'} clipboard item with ID: ${id}`);
       }
+
+      setClipboardData(prevData =>
+        prevData.map(item => item.id === id ? updatedItem : item)
+      );
+      
+      if (selectedItem?.id === id) {
+        setSelectedItem(updatedItem);
+      }
+
+      return updatedItem;
     } catch (error) {
       console.error("Error toggling pin status:", error);
-      setError(`Failed to toggle pin status. Please try again.`);
-      throw error; // Re-throw for error boundary
+      setError(`Failed to toggle pin status: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw error;
     }
   };
 

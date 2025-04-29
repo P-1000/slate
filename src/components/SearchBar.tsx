@@ -24,7 +24,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         placeholder="Search clipboard..."
         className={cn(
           "w-full pl-10 pr-4 py-3 rounded-lg text-base focus:outline-none transition-all",
-          "glass-input"
+          isDark ? "bg-dark-800 text-white" : "bg-gray-100 text-gray-900",
+          "border",
+          isDark ? "border-dark-700" : "border-gray-200"
         )}
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}

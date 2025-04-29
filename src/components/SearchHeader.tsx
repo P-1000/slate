@@ -2,10 +2,9 @@ import React from "react";
 import { cn } from "../utils/cn";
 import { SearchBar } from "./SearchBar";
 import { TypeDropdown } from "./TypeDropdown";
-import { SettingsButton } from "./SettingsButton";
-import { Grip } from "lucide-react";
+import { Grip, Settings } from "lucide-react";
 import { motion } from "framer-motion";
-import { useTheme } from "../ThemeContext";
+import { Button } from "./ui/Button";
 
 interface SearchHeaderProps {
   searchQuery: string;
@@ -22,19 +21,17 @@ export const SearchHeader: React.FC<SearchHeaderProps> = ({
   activeTab,
   setActiveTab,
   isDark,
-  setShowSettings
+  setShowSettings,
 }) => {
-  const { colorPalette } = useTheme();
-  const [position, setPosition] = React.useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = React.useState(false);
 
   return (
     <motion.div
       className={cn(
         "absolute top-0 left-0 right-0 p-4 z-10",
-        "glass-morphism glass-panel",
-        isDark ? "glass-morphism-dark" : "glass-morphism-light",
-        "border-b border-primary-500/20"
+        isDark ? "bg-dark-900" : "bg-white",
+        "border-b",
+        isDark ? "border-dark-800" : "border-gray-200"
       )}
       drag
       dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
@@ -66,8 +63,20 @@ export const SearchHeader: React.FC<SearchHeaderProps> = ({
           setActiveTab={setActiveTab} 
           isDark={isDark} 
         />
-        
-        <SettingsButton onClick={() => setShowSettings(true)} />
+
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setShowSettings(true)}
+          className={cn(
+            "p-2 rounded-md transition-colors",
+            isDark 
+              ? "hover:bg-white/5 text-gray-400" 
+              : "hover:bg-black/5 text-gray-500"
+          )}
+        >
+          <Settings className="h-4 w-4" />
+        </Button>
       </div>
     </motion.div>
   );

@@ -5,20 +5,31 @@ declare module 'electron-clipboard-extended' {
     export function stopWatching(): void;
     export function getText(): string;
     export function setText(text: string): void;
-  }
+}
 
 //declare nedb
 
 declare module 'nedb' {
-    export default class Datastore {
-        constructor(options: { filename: string, autoload: boolean });
-        loadDatabase(callback: (err: Error) => void): void;
-        insert<T>(doc: T, callback: (err: Error, newDoc: T) => void): void;
-        find<T>(query: any, callback: (err: Error, docs: T[]) => void): void;
-        findOne<T>(query: any, callback: (err: Error, doc: T) => void): void;
-        update<T>(query: any, updateQuery: any, options: { multi: boolean }, callback: (err: Error, numAffected: number) => void): void;
-        remove<T>(query: any, options: { multi: boolean }, callback: (err: Error, numRemoved: number) => void): void;
+    interface DatastoreOptions {
+        filename?: string;
+        autoload?: boolean;
+        onload?: (error: Error | null) => void;
     }
+
+    interface Datastore {
+        find: (query: any, callback: (err: Error | null, docs: any[]) => void) => void;
+        findOne: (query: any, callback: (err: Error | null, doc: any) => void) => void;
+        insert: (doc: any, callback: (err: Error | null, newDoc: any) => void) => void;
+        update: (query: any, update: any, options: any, callback: (err: Error | null, numAffected: number) => void) => void;
+        remove: (query: any, options: any, callback: (err: Error | null, n: number) => void) => void;
+        ensureIndex: (options: any) => void;
+    }
+
+    class Datastore {
+        constructor(options?: DatastoreOptions);
+    }
+
+    export default Datastore;
 }
 
 // src/types/electron.d.ts
@@ -58,3 +69,18 @@ export {};
   
   // Ensure that the `electron.d.ts` file is included in your tsconfig.json
   
+
+declare module 'link-preview-js' {
+  interface LinkPreviewData {
+    url: string;
+    title?: string;
+    description?: string;
+    images?: string[];
+    mediaType?: string;
+    contentType?: string;
+    favicons?: string[];
+  }
+
+  function getLinkPreview(url: string, options?: { timeout?: number }): Promise<LinkPreviewData>;
+  export { getLinkPreview };
+}

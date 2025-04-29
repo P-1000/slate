@@ -33,8 +33,22 @@ electron.contextBridge.exposeInMainWorld("ipcRenderer", {
       throw error;
     }
   },
-  pinClipboardData: (id) => electron.ipcRenderer.invoke('pin-clipboard-item', id),
-  unpinClipboardData: (id) => electron.ipcRenderer.invoke('pin-clipboard-item', id),
+  pinClipboardData: async (id) => {
+    try {
+      return await electron.ipcRenderer.invoke("pin-clipboard-data", id);
+    } catch (error) {
+      console.error("Error pinning clipboard data:", error);
+      throw error;
+    }
+  },
+  unpinClipboardData: async (id) => {
+    try {
+      return await electron.ipcRenderer.invoke("unpin-clipboard-data", id);
+    } catch (error) {
+      console.error("Error unpinning clipboard data:", error);
+      throw error;
+    }
+  },
   copyToClipboard: async (content) => {
     try {
       return await electron.ipcRenderer.invoke("copy-to-clipboard", content);
@@ -58,6 +72,15 @@ electron.contextBridge.exposeInMainWorld("ipcRenderer", {
       console.error("Error setting window opacity:", error);
       throw error;
     }
+  },
+  once: (channel, listener) => {
+    const newListener = (_, ...args) => listener(...args);
+    electron.ipcRenderer.once(channel, newListener);
+    return electron.ipcRenderer;
+  },
+  removeListener: (channel, listener) => {
+    electron.ipcRenderer.removeListener(channel, listener);
+    return electron.ipcRenderer;
   }
 });
-electron.ipcRenderer.send("preload-loaded");
+electron.ipcRenderer.send("preload-loaded"); 
